@@ -10,10 +10,11 @@ $ ./execlp
 $ gcc -o execvp execvp.c
 $ ./execvp
 
-
 Description
 ===========
 This assignment creates the same program with two versions of the exec function. One uses execlp and the other uses execvp. Both programs accomplish the same task. 
+
+Command line arguments are not used and will be ignored by the programs.
 
 The parent process creates a child process and waits for it to return. The child process will call its respective form of exec to execute 'ls -lh'. The child process will then return.
 
