@@ -13,7 +13,7 @@
  * Set to 1 to view the command line parse *
  * Set to 0 before submitting!             *
  *******************************************/
-#define DEBUG_PARSE 1
+#define DEBUG_PARSE 0
 
 
 void print_banner()
@@ -88,8 +88,20 @@ void execute_tasks(Parse *P)
     pid_t chpid;
     int fdi;
     int fdo;
+    int (*pipes)[2];
 
+    pipes = malloc((P->ntasks - 1) * sizeof(int[2]));
+    if(!pipes){
+        perror("Failed to allocate memory for array of pipes");
+        exit(EXIT_FAILURE);
+    }
     for (t = 0; t < P->ntasks; t++) {
+        if(t < P->ntasks - 1){
+            if(pipe(pipes[t]) == -1){
+                perror("Failed to create pipe");
+                exit(EXIT_FAILURE);
+            }
+        }
         if (is_builtin(P->tasks[t].cmd)) {
             builtin_execute(P->tasks[t]);
         }
@@ -101,28 +113,66 @@ void execute_tasks(Parse *P)
                     exit(EXIT_FAILURE);
                     break;
                 case 0:
-                    // file in redir
-                    if(t == 0 && P->infile){
-                        fdi = open(P->infile, O_RDONLY);
-                        if(fdi == -1){
-                            perror("Could not open input file for redirection");
+                    // in redir
+                    if(t == 0){
+                        if(P->infile){
+                            fdi = open(P->infile, O_RDONLY);
+                            if(fdi == -1){
+                                perror("Could not open input file for redirection");
+                                exit(EXIT_FAILURE);
+                            }
+                            if(dup2(fdi, STDIN_FILENO) == -1){
+                                perror("Failed to duplicate input file to STDIN");
+                                exit(EXIT_FAILURE);
+                            }
+                            if(close(fdi) == -1){
+                                perror("Failed to close old file descriptor for file input");
+                                exit(EXIT_SUCCESS);
+                            }
+                        }
+                    }else{
+                        if(dup2(pipes[t-1][0], STDIN_FILENO) == -1){
+                            perror("Failed to duplicate pipe read end to STDIN\n");
                             exit(EXIT_FAILURE);
                         }
-                        if(dup2(fdi, STDIN_FILENO) == -1){
-                            perror("Failed to duplicate input file to STDIN");
-                            exit(EXIT_FAILURE);
+                        if(close(pipes[t-1][0]) == -1){
+                            perror("Failed to close old file descriptor for pipe read end");
+                            exit(EXIT_SUCCESS);
+                        }
+                        if(close(pipes[t-1][1]) == -1){
+                            perror("Failed to close unused file descriptor for pipe write end");
+                            exit(EXIT_SUCCESS);
                         }
                     }
-                    // file out redir
-                    if(t == P->ntasks - 1 && P->outfile){
-                        fdo = open(P->outfile, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-                        if(fdo < 0){
-                            perror("Could not open output file for redirection");
+                    // out redir
+                    if(t == P->ntasks - 1){
+                        if(P->outfile){
+                            fdo = open(P->outfile, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+                            if(fdo < 0){
+                                perror("Could not open output file for redirection");
+                                exit(EXIT_FAILURE);
+                            }
+                            if(dup2(fdo, STDOUT_FILENO) == -1){
+                                perror("Failed to duplicate output file to STDOUT\n");
+                                exit(EXIT_FAILURE);
+                            }
+                            if(close(fdo) == -1){
+                                perror("Failed to close old file descriptor for file output");
+                                exit(EXIT_SUCCESS);
+                            }
+                        }
+                    }else{
+                        if(dup2(pipes[t][1], STDOUT_FILENO) == -1){
+                            perror("Could not duplicate pipe write end to STDOUT\n");
                             exit(EXIT_FAILURE);
                         }
-                        if(dup2(fdo, STDOUT_FILENO) == -1){
-                            perror("Failed to duplicate output file to STDOUT\n");
-                            exit(EXIT_FAILURE);
+                        if(close(pipes[t][1]) == -1){
+                            perror("Failed to close old file descriptor for pipe write end");
+                            exit(EXIT_SUCCESS);
+                        }
+                        if(close(pipes[t][0]) == -1){
+                            perror("Failed to close unused file descriptor for pipe read end");
+                            exit(EXIT_SUCCESS);
                         }
                     }
                     // do command
@@ -133,18 +183,28 @@ void execute_tasks(Parse *P)
                     break;
                 default:
                     P->tasks[t].pid = chpid;
+                    if(t != 0){
+                        close(pipes[t-1][0]);
+                        close(pipes[t-1][1]);
+                    }
                     break;
             }
-        }
+        } 
         else {
             printf("pssh: command not found: %s\n", P->tasks[t].cmd);
             break;
         }
     }
+    //printf("waiting for all chpids\n");
     // Wait on all child processes
     if(!P->background){
-        for(t = 0; t < P->ntasks; t++) waitpid(P->tasks[t].pid, NULL, 0);
+        for(t = 0; t < P->ntasks; t++) {
+            waitpid(P->tasks[t].pid, NULL, 0);
+            //printf("child %d has died\n", t);
+        }
     }
+    //printf("done waiting\n");
+    free(pipes);
 }
 
 
