@@ -23,9 +23,7 @@ int main(int argc, char *argv[]){
     }
 
     if(!strcmp(argv[1], "-l")){
-        for(int i = 1; i < 32; i++){
-            printf("%2d) SIG%-15s %s\n", i, sigabbrev(i), strsignal(i));
-        }
+        for(int i = 1; i < 32; i++) printf("%2d) SIG%-15s %s\n", i, sigabbrev(i), strsignal(i));
         exit(EXIT_SUCCESS);
     }else if(!strcmp(argv[1], "-s")){
         if(argc != 4){
@@ -35,12 +33,12 @@ int main(int argc, char *argv[]){
         }  
         signum = atoi(argv[2]);
         if(signum < 0 || signum > 31){
-            fprintf(stderr, "ERROR: failed to parse %s into <signal>\n", argv[2]);
+            fprintf(stderr, "ERROR: failed to parse '%s' into valid signal number\n", argv[2]);
             exit(EXIT_FAILURE);
         }
         pid = atoi(argv[3]);
-        if(pid < 0){
-            fprintf(stderr, "ERROR: failed to parse %s into <pid>\n", argv[3]);
+        if(pid < 1){
+            fprintf(stderr, "ERROR: failed to parse '%s' into valid PID number>\n", argv[3]);
             exit(EXIT_FAILURE);
         }
         
@@ -62,29 +60,32 @@ int main(int argc, char *argv[]){
             }
         }
     }else{
+        if(argc != 2){
+            fprintf(stderr, "ERROR: Incorrect nuber of arguments\n");
+            USAGE
+            exit(EXIT_FAILURE);
+        }
         pid = atoi(argv[1]);
-        if(pid < 0){
-            fprintf(stderr, "ERROR: failed to parse %s into <pid>\n", argv[3]);
+        if(pid < 1){
+            fprintf(stderr, "ERROR: failed to parse '%s' into valid PID\n", argv[1]);
             exit(EXIT_FAILURE);
         }
     }
 
     ret = kill(pid, signum);
     if(ret < 0){
-        perror("kill call failed"); 
+        perror("Kill returned an error"); 
         exit(EXIT_FAILURE);
     }
 }
 
-const char *sigabbrev(unsigned int sig)
-{
+const char *sigabbrev(unsigned int sig){
     const char *sigs[31] = { "HUP", "INT", "QUIT", "ILL", "TRAP", "ABRT",
     "BUS", "FPE", "KILL", "USR1", "SEGV", "USR2", "PIPE", "ALRM",
     "TERM", "STKFLT", "CHLD", "CONT", "STOP", "TSTP", "TTIN",
     "TTOU", "URG", "XCPU", "XFSZ", "VTALRM", "PROF", "WINCH", "IO",
     "PWR", "SYS" };
-    if (sig == 0 || sig > 31)
-    return NULL;
+    if (sig == 0 || sig > 31) return NULL;
     return sigs[sig-1];
 }
 
