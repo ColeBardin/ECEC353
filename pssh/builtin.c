@@ -29,6 +29,7 @@ int is_builtin(char *cmd)
 
 void builtin_execute(Task T)
 {
+    int i;
     if (!strcmp(T.cmd, "exit")) {
         exit(EXIT_SUCCESS);
     } else if(!strcmp(T.cmd, "which")){
@@ -36,7 +37,7 @@ void builtin_execute(Task T)
             fprintf(stderr, "which: which what?\n");
             return;
         }
-        for(int i=0; builtin[i]; i++){
+        for(i=0; builtin[i]; i++){
             if(!strcmp(T.argv[1], builtin[i])){
                 printf("%s: shell built-in command\n", T.argv[1]);
                 return;

@@ -118,7 +118,7 @@ void execute_tasks(Parse *P)
             builtin_execute(P->tasks[t]);
             break;
         }
-        chpid = fork();
+        chpid = vfork();
         switch(chpid){
             case -1:
                 perror("Failed to vfork");
@@ -195,7 +195,7 @@ void execute_tasks(Parse *P)
                 }
                 else if (command_found(P->tasks[t].cmd)) {
                     if(execvp(P->tasks[t].cmd, P->tasks[t].argv) == -1) {
-                        perror("Failed to execute");
+                        perror("Failed to execute program");
                         exit(EXIT_FAILURE);
                     }
                 }
