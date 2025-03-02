@@ -15,6 +15,13 @@
  *******************************************/
 #define DEBUG_PARSE 0
 
+void set_infile(int t, char *filename);
+void set_outfile(int t, char *filename, int ntasks);
+void set_fg_pgrp(pid_t pgrp);
+void handler(int sig);
+
+int (*pipes)[2];
+
 void print_banner()
 {
     printf ("                    ________   \n");
@@ -24,7 +31,6 @@ void print_banner()
     printf ("_  .___//____/ /____/ /_/ /_/  \n");
     printf ("/_/ Type 'exit' or ctrl+c to quit\n\n");
 }
-
 
 /* **returns** a string used to build the prompt
  * (DO NOT JUST printf() IN HERE!)
@@ -95,10 +101,6 @@ static int command_found(const char *cmd)
 void execute_tasks(Parse *P)
 {
     unsigned int t;
-    pid_t chpid;
-    int fdi;
-    int fdo;
-    int (*pipes)[2];
 
     pipes = malloc((P->ntasks - 1) * sizeof(int[2]));
     if(!pipes){
@@ -117,75 +119,19 @@ void execute_tasks(Parse *P)
             builtin_execute(P->tasks[t]);
             break;
         }
-        chpid = vfork();
-        switch(chpid){
+
+        P->tasks[t].pid = vfork();
+        setpgid(P->tasks[t].pid, P->tasks[0].pid);
+        if(!P->background) set_fg_pgrp(P->tasks[0].pid);
+
+        switch(P->tasks[t].pid){
             case -1:
                 perror("Failed to vfork");
                 exit(EXIT_FAILURE);
                 break;
             case 0:
-                // in redir
-                if(t == 0){
-                    if(P->infile){
-                        fdi = open(P->infile, O_RDONLY);
-                        if(fdi == -1){
-                            perror("Could not open input file for redirection");
-                            exit(EXIT_FAILURE);
-                        }
-                        if(dup2(fdi, STDIN_FILENO) == -1){
-                            perror("Failed to duplicate input file to STDIN");
-                            exit(EXIT_FAILURE);
-                        }
-                        if(close(fdi) == -1){
-                            perror("Failed to close old file descriptor for file input");
-                            exit(EXIT_SUCCESS);
-                        }
-                    }
-                }else{
-                    if(dup2(pipes[t-1][0], STDIN_FILENO) == -1){
-                        perror("Failed to duplicate pipe read end to STDIN");
-                        exit(EXIT_FAILURE);
-                    }
-                    if(close(pipes[t-1][0]) == -1){
-                        perror("Failed to close old file descriptor for pipe read end");
-                        exit(EXIT_SUCCESS);
-                    }
-                    if(close(pipes[t-1][1]) == -1){
-                        perror("Failed to close unused file descriptor for pipe write end");
-                        exit(EXIT_SUCCESS);
-                    }
-                }
-                // out redir
-                if(t == P->ntasks - 1){
-                    if(P->outfile){
-                        fdo = open(P->outfile, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-                        if(fdo < 0){
-                            perror("Could not open output file for redirection");
-                            exit(EXIT_FAILURE);
-                        }
-                        if(dup2(fdo, STDOUT_FILENO) == -1){
-                            perror("Failed to duplicate output file to STDOUT\n");
-                            exit(EXIT_FAILURE);
-                        }
-                        if(close(fdo) == -1){
-                            perror("Failed to close old file descriptor for file output");
-                            exit(EXIT_SUCCESS);
-                        }
-                    }
-                }else{
-                    if(dup2(pipes[t][1], STDOUT_FILENO) == -1){
-                        perror("Could not duplicate pipe write end to STDOUT\n");
-                        exit(EXIT_FAILURE);
-                    }
-                    if(close(pipes[t][1]) == -1){
-                        perror("Failed to close old file descriptor for pipe write end");
-                        exit(EXIT_SUCCESS);
-                    }
-                    if(close(pipes[t][0]) == -1){
-                        perror("Failed to close unused file descriptor for pipe read end");
-                        exit(EXIT_SUCCESS);
-                    }
-                }
+                set_infile(t, P->infile);
+                set_outfile(t, P->outfile, P->ntasks);
 
                 if (is_builtin(P->tasks[t].cmd)) {
                     builtin_execute(P->tasks[t]);
@@ -204,8 +150,11 @@ void execute_tasks(Parse *P)
                 }
                 break;
             default:
-                P->tasks[t].pid = chpid;
-                if(t != 0){
+                signal(SIGTTOU, handler);
+                signal(SIGCHLD, handler);
+                if(t == 0){
+                    if(!P->background) tcsetpgrp(STDOUT_FILENO, P->tasks[t].pid);
+                }else{
                     close(pipes[t-1][0]);
                     close(pipes[t-1][1]);
                 }
@@ -213,7 +162,11 @@ void execute_tasks(Parse *P)
         } 
     }
     // Wait on all child processes
-    if(!P->background){
+    if(P->background){
+        printf("[%d]", 0); // TODO: replace with job counter shit
+        for(t = 0; t < P->ntasks; t++) printf(" %d", P->tasks[t].pid);
+        printf("\n");
+    }else{
         for(t = 0; t < P->ntasks; t++){
             if(P->tasks[t].pid != -1){
                 waitpid(P->tasks[t].pid, NULL, 0);
@@ -260,3 +213,115 @@ int main(int argc, char **argv)
         free(ps1);
     }
 }
+
+void set_infile(int t, char *filename)
+{
+    int fdi;
+    if(t == 0){
+        if(filename){
+            fdi = open(filename, O_RDONLY);
+            if(fdi == -1){
+                perror("Could not open input file for redirection");
+                exit(EXIT_FAILURE);
+            }
+            if(dup2(fdi, STDIN_FILENO) == -1){
+                perror("Failed to duplicate input file to STDIN");
+                exit(EXIT_FAILURE);
+            }
+            if(close(fdi) == -1){
+                perror("Failed to close old file descriptor for file input");
+                exit(EXIT_SUCCESS);
+            }
+        }
+    }else{
+        if(dup2(pipes[t-1][0], STDIN_FILENO) == -1){
+            perror("Failed to duplicate pipe read end to STDIN");
+            exit(EXIT_FAILURE);
+        }
+        if(close(pipes[t-1][0]) == -1){
+            perror("Failed to close old file descriptor for pipe read end");
+            exit(EXIT_SUCCESS);
+        }
+        if(close(pipes[t-1][1]) == -1){
+            perror("Failed to close unused file descriptor for pipe write end");
+            exit(EXIT_SUCCESS);
+        }
+    }
+}
+
+void set_outfile(int t, char *filename, int ntasks)
+{
+    int fdo;
+    if(t == ntasks - 1){
+        if(filename){
+            fdo = open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+            if(fdo < 0){
+                perror("Could not open output file for redirection");
+                exit(EXIT_FAILURE);
+            }
+            if(dup2(fdo, STDOUT_FILENO) == -1){
+                perror("Failed to duplicate output file to STDOUT\n");
+                exit(EXIT_FAILURE);
+            }
+            if(close(fdo) == -1){
+                perror("Failed to close old file descriptor for file output");
+                exit(EXIT_SUCCESS);
+            }
+        }
+    }else{
+        if(dup2(pipes[t][1], STDOUT_FILENO) == -1){
+            perror("Could not duplicate pipe write end to STDOUT\n");
+            exit(EXIT_FAILURE);
+        }
+        if(close(pipes[t][1]) == -1){
+            perror("Failed to close old file descriptor for pipe write end");
+            exit(EXIT_SUCCESS);
+        }
+        if(close(pipes[t][0]) == -1){
+            perror("Failed to close unused file descriptor for pipe read end");
+            exit(EXIT_SUCCESS);
+        }
+    }
+}
+
+void set_fg_pgrp(pid_t pgrp)
+{
+    void (*sav)(int sig);
+
+    if (pgrp == 0)
+        pgrp = getpgrp();
+
+    sav = signal(SIGTTOU, SIG_IGN);
+    tcsetpgrp(STDOUT_FILENO, pgrp);
+    signal(SIGTTOU, sav);
+}
+
+void handler(int sig)
+{
+    pid_t chld;
+    int status;
+
+    switch(sig) {
+    case SIGTTOU:
+        while(tcgetpgrp(STDOUT_FILENO) != getpgrp())
+            pause();
+        break;
+    case SIGCHLD:
+        while( (chld = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0 ) {
+            if (WIFSTOPPED(status)) {
+                set_fg_pgrp(0);
+            }else if (WIFCONTINUED(status)) {
+                set_fg_pgrp(0);
+            } else {
+                set_fg_pgrp(0);
+                //printf("Parent: Child %d has terminated\n", chld);
+            }
+        }
+
+        break;
+
+    default:
+        break;
+    }
+}
+
