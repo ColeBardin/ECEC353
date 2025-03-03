@@ -8,6 +8,7 @@
 
 #include "builtin.h"
 #include "parse.h"
+#include "job.h"
 
 /*******************************************
  * Set to 1 to view the command line parse *
@@ -21,6 +22,7 @@ void set_fg_pgrp(pid_t pgrp);
 void handler(int sig);
 
 int (*pipes)[2];
+Job jobs[MAX_JOBS] = {0};
 
 void print_banner()
 {
@@ -101,6 +103,7 @@ static int command_found(const char *cmd)
 void execute_tasks(Parse *P)
 {
     unsigned int t;
+    int jobn;
 
     pipes = malloc((P->ntasks - 1) * sizeof(int[2]));
     if(!pipes){
@@ -125,46 +128,50 @@ void execute_tasks(Parse *P)
         if(!P->background) set_fg_pgrp(P->tasks[0].pid);
 
         switch(P->tasks[t].pid){
-            case -1:
-                perror("Failed to vfork");
-                exit(EXIT_FAILURE);
-                break;
-            case 0:
-                set_infile(t, P->infile);
-                set_outfile(t, P->outfile, P->ntasks);
+        case -1:
+            perror("Failed to vfork");
+            exit(EXIT_FAILURE);
+            break;
+        case 0:
+            set_infile(t, P->infile);
+            set_outfile(t, P->outfile, P->ntasks);
 
-                if (is_builtin(P->tasks[t].cmd)) {
-                    builtin_execute(P->tasks[t]);
-                    P->tasks[t].pid = -1;
-                    exit(EXIT_SUCCESS);
-                }
-                else if (command_found(P->tasks[t].cmd)) {
-                    if(execvp(P->tasks[t].cmd, P->tasks[t].argv) == -1) {
-                        perror("Failed to execute program");
-                        exit(EXIT_FAILURE);
-                    }
-                }
-                else {
-                    printf("pssh: command not found: %s\n", P->tasks[t].cmd);
+            if (is_builtin(P->tasks[t].cmd)) {
+                builtin_execute(P->tasks[t]);
+                P->tasks[t].pid = -1;
+                exit(EXIT_SUCCESS);
+            }
+            else if (command_found(P->tasks[t].cmd)) {
+                if(execvp(P->tasks[t].cmd, P->tasks[t].argv) == -1) {
+                    perror("Failed to execute program");
                     exit(EXIT_FAILURE);
                 }
-                break;
-            default:
-                if(t == 0){
-                    if(!P->background) set_fg_pgrp(P->tasks[t].pid);
-                }else{
-                    close(pipes[t-1][0]);
-                    close(pipes[t-1][1]);
-                }
-                break;
+            }
+            else {
+                printf("pssh: command not found: %s\n", P->tasks[t].cmd);
+                exit(EXIT_FAILURE);
+            }
+            break;
+        default:
+            if(t == 0){
+                if(!P->background) set_fg_pgrp(P->tasks[t].pid);
+            }else{
+                close(pipes[t-1][0]);
+                close(pipes[t-1][1]);
+            }
+            break;
         } 
     }
     // Wait on all child processes
     if(P->background){
-        printf("[%d]", 0); // TODO: replace with job counter shit
-        for(t = 0; t < P->ntasks; t++) printf(" %d", P->tasks[t].pid);
+        jobn = add_job(jobs, P, BG);
+        if(jobn == -1) exit(EXIT_FAILURE);
+        printf("[%d]", jobn);
+        for(t = 0; t < jobs[jobn].npids; t++) printf(" %d", jobs[jobn].pids[t]);
         printf("\n");
     }else{
+        jobn = add_job(jobs, P, FG);
+        if(jobn == -1) exit(EXIT_FAILURE);
         //printf("PSSH: done setting up processes\n");
         /*
         for(t = 0; t < P->ntasks; t++){
@@ -307,6 +314,7 @@ void handler(int sig)
 {
     pid_t chld;
     int status;
+    int jobn;
 
     switch(sig) {
     case SIGTTOU:
@@ -318,15 +326,22 @@ void handler(int sig)
             // TODO: Determine if these need to be different
             if (WIFSTOPPED(status)) {
                 set_fg_pgrp(0);
-                printf("[1] + suspended\t %d\n", chld);
+                jobn = find_job(jobs, chld);
+                if(jobs[jobn].pgid == chld) printf("[%d] + suspended\t %s\n", jobn, jobs[jobn].name);
             } else if (WIFCONTINUED(status)) {
                 set_fg_pgrp(0);
-                //printf("Parent: Child %d has been continued\n", chld);
+                jobn = find_job(jobs, chld);
+                if(jobs[jobn].pgid == chld) printf("[%d] + continued\t %s\n", jobn, jobs[jobn].name);
             } else {
                 // FG task exit
                 if(tcgetpgrp(STDOUT_FILENO) != getpgrp()) set_fg_pgrp(0);
                 // BG task exit
-                else if(!WTERMSIG(status)) printf("[1] Done %d\n", chld);
+                else if(!WTERMSIG(status))
+                {
+                    jobn = find_job(jobs, chld);
+                    // Only print when session leader exits
+                    if(jobs[jobn].pgid == chld) printf("[%d] Done\t %s\n", jobn, jobs[jobn].name);
+                }
                 // FG exit via CTRL-C
                 else printf("Parent: NOT supposed to print this\n");
             }
