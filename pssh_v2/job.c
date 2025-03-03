@@ -35,6 +35,8 @@ int add_job(Job *jobs, Parse *P, JobStatus status)
             for(i = 0; i < P->ntasks; i++) cur->pids[i] = P->tasks[i].pid;
             cur->pgid = cur->pids[0];
             cur->status = status;
+
+            printf("Created job for %s, job#%d (%d)\n", cur->name, job, cur->pgid);
             return job;
         }
     }
@@ -42,13 +44,14 @@ int add_job(Job *jobs, Parse *P, JobStatus status)
     return OUT_OF_JOBS;
 }
 
-int remove_job(Job * jobs, int jobn)
+int delete_job(Job * jobs, int jobn)
 {
     if(!jobs) return BAD_JOB_LIST;
     Job *cur;
 
     cur = &jobs[jobn];
     if(cur->name == NULL) return JOB_NOT_FOUND;
+    printf("DEBUG: deleted job %d for %d(%s)\n", jobn, cur->pgid, cur->name);
     free(cur->name);
     cur->name = NULL;
     free(cur->pids);
@@ -73,6 +76,16 @@ int find_job(Job *jobs, pid_t pid)
     return JOB_NOT_FOUND;
 }
 
-
+char *get_status(JobStatus status)
+{
+    static char *state_names[] = 
+    {
+        "stopped",
+        "term",
+        "running",
+        "running"
+    };
+    return state_names[status];
+}
 
 

@@ -5,14 +5,31 @@
 
 #include "builtin.h"
 #include "parse.h"
+#include "job.h"
+
+extern Job jobs[MAX_JOBS];
 
 static char *builtin[] = {
     "exit",   /* exits the shell */
     "which",  /* displays full path to command */
     "cd",     /* Changes process working directory */
+    "jobs",
+    "fg",
+    "bg",
     NULL
 };
 
+void set_fg_pgrp(pid_t pgrp)
+{
+    void (*sav)(int sig);
+
+    if (pgrp == 0)
+        pgrp = getpgrp();
+
+    sav = signal(SIGTTOU, SIG_IGN);
+    tcsetpgrp(STDOUT_FILENO, pgrp);
+    signal(SIGTTOU, sav);
+}
 
 int is_builtin(char *cmd)
 {
@@ -72,7 +89,29 @@ void builtin_execute(Task T)
         else p = T.argv[1];
 
         if(chdir(p) < 0) perror("Failed to cd");
+    } else if(!strcmp(T.cmd, "jobs")){
+        for(i = 0; i < MAX_JOBS; i++)
+        {
+            if(jobs[i].name != NULL) printf("[%d] + %s\t %s\n", i, get_status(jobs[i].status), jobs[i].name);
+        }
+    } else if(!strcmp(T.cmd, "fg")){
+        int jobn;
+        if(T.argv[1] == NULL || T.argv[1][0] != '%')
+        {
+            fprintf(stderr, "fg: invalid argument use\n");
+            fprintf(stderr, "USAGE: fg %%<job_number>\n");
+            return;
+        }
+        jobn = atoi(&T.argv[1][1]);
+        if(jobn < 0 || jobs[jobn].name == NULL){
+            fprintf(stderr, "fg: invalid job number: %d\n", jobn);
+            return;
+        }
+        set_fg_pgrp(jobs[jobn].pgid);
+    } else if(!strcmp(T.cmd, "bg")){
+
     } else {
         printf("pssh: builtin command: %s (not implemented!)\n", T.cmd);
     }
 }
+

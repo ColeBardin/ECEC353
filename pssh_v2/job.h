@@ -25,8 +25,8 @@ typedef struct {
 } Job;
 
 int add_job(Job *, Parse *, JobStatus);
-int remove_job(Job *, int);
+int delete_job(Job *, int);
 int find_job(Job *, pid_t);
-
+char *get_status(JobStatus);
 
 #endif

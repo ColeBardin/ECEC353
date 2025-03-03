@@ -20,7 +20,6 @@ typedef struct {
     int invalid_syntax;  /* parse failed */
 } Parse;
 
-
 Parse *parse_cmdline(char *cmdline);
 void parse_destroy(Parse **P);
 void parse_debug(Parse *P);

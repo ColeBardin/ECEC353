@@ -18,11 +18,11 @@
 
 void set_infile(int t, char *filename);
 void set_outfile(int t, char *filename, int ntasks);
-void set_fg_pgrp(pid_t pgrp);
 void handler(int sig);
 
 int (*pipes)[2];
 Job jobs[MAX_JOBS] = {0};
+Parse *global_P;
 
 void print_banner()
 {
@@ -110,6 +110,7 @@ void execute_tasks(Parse *P)
         perror("Failed to allocate memory for array of pipes");
         exit(EXIT_FAILURE);
     }
+    global_P = P;
     for (t = 0; t < P->ntasks; t++) {
         if(t < P->ntasks - 1){
             if(pipe(pipes[t]) == -1){
@@ -138,7 +139,6 @@ void execute_tasks(Parse *P)
 
             if (is_builtin(P->tasks[t].cmd)) {
                 builtin_execute(P->tasks[t]);
-                P->tasks[t].pid = -1;
                 exit(EXIT_SUCCESS);
             }
             else if (command_found(P->tasks[t].cmd)) {
@@ -162,24 +162,13 @@ void execute_tasks(Parse *P)
             break;
         } 
     }
-    // Wait on all child processes
+
     if(P->background){
         jobn = add_job(jobs, P, BG);
         if(jobn == -1) exit(EXIT_FAILURE);
         printf("[%d]", jobn);
         for(t = 0; t < jobs[jobn].npids; t++) printf(" %d", jobs[jobn].pids[t]);
         printf("\n");
-    }else{
-        jobn = add_job(jobs, P, FG);
-        if(jobn == -1) exit(EXIT_FAILURE);
-        //printf("PSSH: done setting up processes\n");
-        /*
-        for(t = 0; t < P->ntasks; t++){
-            if(P->tasks[t].pid != -1){
-                waitpid(P->tasks[t].pid, NULL, 0);
-            }
-        }
-        */
     }
     free(pipes);
 }
@@ -298,18 +287,6 @@ void set_outfile(int t, char *filename, int ntasks)
     }
 }
 
-void set_fg_pgrp(pid_t pgrp)
-{
-    void (*sav)(int sig);
-
-    if (pgrp == 0)
-        pgrp = getpgrp();
-
-    sav = signal(SIGTTOU, SIG_IGN);
-    tcsetpgrp(STDOUT_FILENO, pgrp);
-    signal(SIGTTOU, sav);
-}
-
 void handler(int sig)
 {
     pid_t chld;
@@ -323,10 +300,10 @@ void handler(int sig)
         break;
     case SIGCHLD:
         while( (chld = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0 ) {
-            // TODO: Determine if these need to be different
             if (WIFSTOPPED(status)) {
                 set_fg_pgrp(0);
-                jobn = find_job(jobs, chld);
+                jobn = add_job(jobs, global_P, BG);
+                if(jobn == -1) exit(EXIT_FAILURE);
                 if(jobs[jobn].pgid == chld) printf("[%d] + suspended\t %s\n", jobn, jobs[jobn].name);
             } else if (WIFCONTINUED(status)) {
                 set_fg_pgrp(0);
@@ -343,7 +320,11 @@ void handler(int sig)
                     if(jobs[jobn].pgid == chld) printf("[%d] Done\t %s\n", jobn, jobs[jobn].name);
                 }
                 // FG exit via CTRL-C
-                else printf("Parent: NOT supposed to print this\n");
+                else printf("PSSH: FG CTRL-C, NOT supposed to print this...\n");
+
+                jobn = find_job(jobs, chld);
+                //printf("child exiting %d, job %d\n", chld, jobn);
+                if(jobn > -1) delete_job(jobs, jobn);
             }
         }
 
