@@ -150,10 +150,8 @@ void execute_tasks(Parse *P)
                 }
                 break;
             default:
-                signal(SIGTTOU, handler);
-                signal(SIGCHLD, handler);
                 if(t == 0){
-                    if(!P->background) tcsetpgrp(STDOUT_FILENO, P->tasks[t].pid);
+                    if(!P->background) set_fg_pgrp(P->tasks[t].pid);
                 }else{
                     close(pipes[t-1][0]);
                     close(pipes[t-1][1]);
@@ -167,11 +165,14 @@ void execute_tasks(Parse *P)
         for(t = 0; t < P->ntasks; t++) printf(" %d", P->tasks[t].pid);
         printf("\n");
     }else{
+        //printf("PSSH: done setting up processes\n");
+        /*
         for(t = 0; t < P->ntasks; t++){
             if(P->tasks[t].pid != -1){
                 waitpid(P->tasks[t].pid, NULL, 0);
             }
         }
+        */
     }
     free(pipes);
 }
@@ -184,8 +185,14 @@ int main(int argc, char **argv)
     Parse *P;
 
     print_banner();
+    signal(SIGTTOU, handler);
+    signal(SIGCHLD, handler);
 
     while (1) {
+        /*
+        while(tcgetpgrp(STDOUT_FILENO) != getpgrp())
+            pause();
+            */
         ps1 = build_prompt();
         /* do NOT replace readline() with scanf() or anything else! */
         cmdline = readline(ps1);
@@ -308,13 +315,20 @@ void handler(int sig)
         break;
     case SIGCHLD:
         while( (chld = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0 ) {
+            // TODO: Determine if these need to be different
             if (WIFSTOPPED(status)) {
                 set_fg_pgrp(0);
-            }else if (WIFCONTINUED(status)) {
+                printf("[1] + suspended\t %d\n", chld);
+            } else if (WIFCONTINUED(status)) {
                 set_fg_pgrp(0);
+                //printf("Parent: Child %d has been continued\n", chld);
             } else {
-                set_fg_pgrp(0);
-                //printf("Parent: Child %d has terminated\n", chld);
+                // FG task exit
+                if(tcgetpgrp(STDOUT_FILENO) != getpgrp()) set_fg_pgrp(0);
+                // BG task exit
+                else if(!WTERMSIG(status)) printf("[1] Done %d\n", chld);
+                // FG exit via CTRL-C
+                else printf("Parent: NOT supposed to print this\n");
             }
         }
 
