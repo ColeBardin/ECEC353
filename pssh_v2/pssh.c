@@ -22,6 +22,7 @@ void handler(int sig);
 
 int (*pipes)[2];
 Job jobs[MAX_JOBS] = {0};
+Job *bg_jobs[MAX_JOBS] = {0};
 Parse *global_P;
 
 void print_banner()
@@ -105,12 +106,17 @@ void execute_tasks(Parse *P)
     unsigned int t;
     int jobn;
 
+    global_P = P;
+
+    jobn = add_job(jobs, P, FG);
+    if(jobn < 0) exit(EXIT_FAILURE);
+    if(P->background) bg_job(jobs, bg_jobs, jobn);
+
     pipes = malloc((P->ntasks - 1) * sizeof(int[2]));
     if(!pipes){
         perror("Failed to allocate memory for array of pipes");
         exit(EXIT_FAILURE);
     }
-    global_P = P;
     for (t = 0; t < P->ntasks; t++) {
         if(t < P->ntasks - 1){
             if(pipe(pipes[t]) == -1){
@@ -153,6 +159,7 @@ void execute_tasks(Parse *P)
             }
             break;
         default:
+            add_pid_to_job(jobs, jobn, P->tasks[t].pid, t);
             if(t == 0){
                 if(!P->background) set_fg_pgrp(P->tasks[t].pid);
             }else{
@@ -163,13 +170,6 @@ void execute_tasks(Parse *P)
         } 
     }
 
-    if(P->background){
-        jobn = add_job(jobs, P, BG);
-        if(jobn == -1) exit(EXIT_FAILURE);
-        printf("[%d]", jobn);
-        for(t = 0; t < jobs[jobn].npids; t++) printf(" %d", jobs[jobn].pids[t]);
-        printf("\n");
-    }
     free(pipes);
 }
 
@@ -300,31 +300,40 @@ void handler(int sig)
         break;
     case SIGCHLD:
         while( (chld = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0 ) {
+            jobn = find_job(jobs, chld);
+            /*
+            if(jobn < 0)
+            {
+                fprintf(stderr, "DEBUG: SIGCHLD failed to find job (%d) for chld %d\n", jobn, chld);
+                exit(EXIT_FAILURE);
+            }
+            */
+
             if (WIFSTOPPED(status)) {
                 set_fg_pgrp(0);
-                jobn = add_job(jobs, global_P, BG);
-                if(jobn == -1) exit(EXIT_FAILURE);
-                if(jobs[jobn].pgid == chld) printf("[%d] + suspended\t %s\n", jobn, jobs[jobn].name);
+                if(jobs[jobn].status == FG) bg_job(jobs, bg_jobs, jobn);
+                suspend_job(bg_jobs, jobn);
             } else if (WIFCONTINUED(status)) {
                 set_fg_pgrp(0);
-                jobn = find_job(jobs, chld);
                 if(jobs[jobn].pgid == chld) printf("[%d] + continued\t %s\n", jobn, jobs[jobn].name);
-            } else {
+            } else { // Job is done
                 // FG task exit
                 if(tcgetpgrp(STDOUT_FILENO) != getpgrp()) set_fg_pgrp(0);
                 // BG task exit
                 else if(!WTERMSIG(status))
                 {
-                    jobn = find_job(jobs, chld);
                     // Only print when session leader exits
-                    if(jobs[jobn].pgid == chld) printf("[%d] Done\t %s\n", jobn, jobs[jobn].name);
+                    //if(jobs[jobn].pgid == chld) printf("[%d] Done\t %s\n", jobn, jobs[jobn].name);
+                    bg_job_remove(bg_jobs, chld);
                 }
                 // FG exit via CTRL-C
-                else printf("PSSH: FG CTRL-C, NOT supposed to print this...\n");
+                else printf("PSSH: FG CTRL-C. NOT supposed to print this...\n");
 
-                jobn = find_job(jobs, chld);
                 //printf("child exiting %d, job %d\n", chld, jobn);
-                if(jobn > -1) delete_job(jobs, jobn);
+                //if(jobn > -1) delete_job(jobs, jobn);
+
+                terminate_job(jobs, jobn);
+                delete_job(jobs, jobn);
             }
         }
 

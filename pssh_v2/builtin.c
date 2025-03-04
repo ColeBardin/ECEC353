@@ -8,6 +8,7 @@
 #include "job.h"
 
 extern Job jobs[MAX_JOBS];
+extern Job *bg_jobs[MAX_JOBS];
 
 static char *builtin[] = {
     "exit",   /* exits the shell */
@@ -90,9 +91,11 @@ void builtin_execute(Task T)
 
         if(chdir(p) < 0) perror("Failed to cd");
     } else if(!strcmp(T.cmd, "jobs")){
+        Job *cur;
         for(i = 0; i < MAX_JOBS; i++)
         {
-            if(jobs[i].name != NULL) printf("[%d] + %s\t %s\n", i, get_status(jobs[i].status), jobs[i].name);
+            cur = bg_jobs[i];
+            if(cur->name != NULL) printf("[%d] + %s\t %s\n", i, get_status(cur->status), cur->name);
         }
     } else if(!strcmp(T.cmd, "fg")){
         int jobn;
