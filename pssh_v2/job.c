@@ -31,11 +31,8 @@ int add_job(Job *jobs, Parse *P, JobStatus status)
                 perror("Failed to allocate array for job pids");
                 exit(EXIT_FAILURE);
             }
-            /*
-            for(i = 0; i < P->ntasks; i++) cur->pids[i] = P->tasks[i].pid;
-            cur->pgid = cur->pids[0];
-            */
             cur->status = status;
+            cur->bg_id = -1;
 
             printf("DEBUG: Created main job for %s, job#%d (%d)\n", cur->name, job, cur->pgid);
             return job;
@@ -111,7 +108,7 @@ char *get_status(JobStatus status)
 int bg_job(Job *jobs, Job **bg_jobs, int jobn)
 {
     Job *cur;
-    int i, t;
+    int i;
 
     if(!jobs)
     {
@@ -140,9 +137,7 @@ int bg_job(Job *jobs, Job **bg_jobs, int jobn)
         {
             bg_jobs[i] = cur;
             cur->status = BG;
-            printf("[%d]", i);
-            for(t = 0; t < cur->npids; t++) printf(" %d", cur->pids[t]);
-            printf("\n");
+            cur->bg_id = i;
             return i;
         }
     }
@@ -207,7 +202,7 @@ int bg_job_remove(Job **bg_jobs, pid_t pgid)
     Job *cur;
     if(!bg_jobs)
     {
-        fprintf(stderr, "suspend_job: bad bg_jobs array\n");
+        fprintf(stderr, "bg_job_remove: bad bg_jobs array\n");
         return BAD_JOB_LIST;
     }
     for(i = 0; i < MAX_JOBS; i++)
@@ -248,6 +243,97 @@ int add_pid_to_job(Job *jobs, int jobn, pid_t pid, int task)
 
     return 0;
 }
+
+int kill_job(Job *jobs, int jobn)
+{
+    Job *cur;
+
+    if(!jobs)
+    {
+        fprintf(stderr, "kill_job: bad jobs array\n");
+        return BAD_JOB_LIST;
+    }
+    if(jobn < 0 || jobn >= MAX_JOBS)
+    {
+        fprintf(stderr, "kill_job: job index out of range\n");
+        return JOB_NOT_FOUND;
+    }
+    cur = &jobs[jobn];
+    if(cur->name == NULL)
+    {
+        fprintf(stderr, "kill_job: job index is not a job\n");
+        return JOB_NOT_FOUND;
+    }
+    cur->status = TERM;
+    printf("[%d] + killed\t %s\n", jobn, cur->name);
+
+    return 0;
+}
+
+int pid_term_job(Job *jobs, Job ** bg_jobs, pid_t pid, int jobn)
+{
+    int i;
+    Job *cur;
+
+    if(!jobs)
+    {
+        fprintf(stderr, "pid_term_job: bad jobs array\n");
+        return BAD_JOB_LIST;
+    }
+    if(jobn < 0 || jobn >= MAX_JOBS)
+    {
+        fprintf(stderr, "pid_term_job: job index out of range\n");
+        return JOB_NOT_FOUND;
+    }
+    cur = &jobs[jobn];
+    if(cur->name == NULL)
+    {
+        fprintf(stderr, "pid_term_job: job index is not a job\n");
+        return JOB_NOT_FOUND;
+    }
+    for(i = 0; i < cur->npids; i++)
+    {
+        if(cur->pids[i] == pid)
+        {
+            cur->pids[i] = -1;
+            break;
+        }
+    }
+    if(i == cur->npids)
+    {
+        fprintf(stderr, "pid_term_job: pid %d is not found in job %d\n", pid, jobn); 
+        return PID_NOT_FOUND;
+    }
+    // Check for still running pids
+    for(i = 0; i < cur->npids; i++) if(cur->pids[i] != -1) return 0;
+    // No running PIDs
+    if(cur->status == BG) bg_job_remove(bg_jobs, cur->pgid);
+    delete_job(jobs, jobn);
+    return JOB_DONE;
+}
+
+int print_bg_job(Job *job)
+{
+    int i;
+    if(!job)
+    {
+        fprintf(stderr, "print_bg_job: received NULL job pointer\n");
+        return JOB_NOT_FOUND;
+    }
+    if(job->name == NULL)
+    {
+        fprintf(stderr, "print_bg_job: job pointer is not an active job\n");
+        return JOB_NOT_FOUND;
+    }
+
+    printf("[%d]", job->bg_id);
+    for(i = 0; i < job->npids; i++) printf(" %d", job->pids[i]);
+    printf("\n");
+    return 0;
+}
+
+
+
 
 
 
