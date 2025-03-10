@@ -185,7 +185,7 @@ void builtin_execute(Task T)
                     printf("pssh: invalid job number: %s\n", T.argv[i]);
                     return;
                 }
-                printf("DEBUG: sending signal %d to job#%d\n", signum, jobn);
+                //printf("DEBUG: sending signal %d to job#%d\n", signum, jobn);
                 kill(-1 * pgid, signum);
             }
             else

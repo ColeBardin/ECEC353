@@ -140,7 +140,7 @@ void execute_tasks(Parse *P)
 
         switch(P->tasks[t].pid){
         case -1:
-            perror("Failed to vfork");
+            perror("Failed to fork");
             exit(EXIT_FAILURE);
             break;
         case 0:
@@ -322,13 +322,13 @@ void handler(int sig)
             jobn = find_job(chld);
             if(jobn < 0)
             {
-                fprintf(stderr, "DEBUG: SIGCHLD failed to find job (%d) for chld %d\n", jobn, chld);
+                fprintf(stderr, "pssh: SIGCHLD failed to find job (%d) for chld %d\n", jobn, chld);
                 exit(EXIT_FAILURE);
             }
 
             if (WIFSTOPPED(status)) {
                 set_fg_pgrp(0);
-                printf("STOPPED jobn %d\n", jobn);
+                //printf("STOPPED jobn %d\n", jobn);
                 suspend_job(jobn);
             } else if (WIFCONTINUED(status)) {
                 continue_job(jobn);
@@ -338,11 +338,11 @@ void handler(int sig)
                 //printf("SIGCHLD: W IF EXITED\n");
             }else{
                 if(tcgetpgrp(STDOUT_FILENO) != getpgrp()){
-                    printf("SIGCHLD: FG task exited\n");
+                    //printf("SIGCHLD: FG task exited\n");
                     if(pid_term_job(chld, jobn) == JOB_DONE) set_fg_pgrp(0);
                 }else{
                     WTERMSIG(status);
-                    printf("SIGCHLD: signal stat %d\n", status);
+                    //printf("SIGCHLD: signal stat %d\n", status);
                     switch(status)
                     {
                     case 0:
@@ -354,7 +354,7 @@ void handler(int sig)
                         //jobs[jobn].status = TERM;
                         break;
                     default:
-                        printf("SIGCHLD: some other signal status: %d\n", status);
+                        printf("pssh: SIGCLD exited with some other signal status: %d\n", status);
                         break;
                     }
                     pid_term_job(chld, jobn);

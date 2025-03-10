@@ -35,7 +35,7 @@ int add_job(Parse *P, JobStatus status)
             cur->status = status;
             cur->bg_id = -1;
 
-            printf("DEBUG: Created main job for %s, job#%d (%d)\n", cur->name, job, cur->pgid);
+            //printf("DEBUG: Created main job for %s, job#%d (%d)\n", cur->name, job, cur->pgid);
             return job;
         }
     }
@@ -60,7 +60,7 @@ int delete_job(int jobn)
         return JOB_NOT_FOUND;
     }
 
-    printf("DEBUG: deleted main job %d for %d(%s)\n", jobn, cur->pgid, cur->name);
+    //printf("DEBUG: deleted main job %d for %d(%s)\n", jobn, cur->pgid, cur->name);
     //if(bg_jobs[cur->bg_id]->pgid == cur->pgid) bg_jobs[cur->bg_id] = NULL;
     free(cur->name);
     cur->name = NULL;
@@ -193,7 +193,7 @@ int terminate_job(int jobn)
         return JOB_NOT_FOUND;
     }
     
-    printf("DEBUG: removed main job %d (%s)\n", jobn, cur->name);
+    //printf("DEBUG: removed main job %d (%s)\n", jobn, cur->name);
     cur->status = TERM;
     return 0;
 }
@@ -236,7 +236,7 @@ int add_pid_to_job(int jobn, pid_t pid, int task)
     }
     cur->pids[task] = pid;
     if(task == 0) cur->pgid = pid;
-    printf("DEBUG: set pid[%d] to %d for job %d\n", task, pid, jobn);
+    //printf("DEBUG: set pid[%d] to %d for job %d\n", task, pid, jobn);
 
     return 0;
 }
@@ -293,7 +293,7 @@ int pid_term_job(pid_t pid, int jobn)
     }
     // Check for still running pids
     for(i = 0; i < cur->npids; i++) if(cur->pids[i] != -1) return 0;
-    printf("DEBUG: no more PIDs running for main job %d (bg %d)\n", jobn, cur->bg_id);
+    //printf("DEBUG: no more PIDs running for main job %d (bg %d)\n", jobn, cur->bg_id);
     // No running PIDs
     if(cur->bg_id > -1) bg_job_remove(cur->bg_id);
     delete_job(jobn);
