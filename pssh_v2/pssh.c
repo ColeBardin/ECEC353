@@ -5,6 +5,7 @@
 #include <readline/readline.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <sys/mman.h>
 
 #include "builtin.h"
 #include "parse.h"
@@ -21,9 +22,6 @@ void set_outfile(int t, char *filename, int ntasks);
 void handler(int sig);
 
 int (*pipes)[2];
-Job jobs[MAX_JOBS] = {0};
-Job *bg_jobs[MAX_JOBS] = {0};
-Parse *global_P;
 
 void print_banner()
 {
@@ -109,11 +107,9 @@ void execute_tasks(Parse *P)
     sigemptyset(&no_sigchld);
     sigaddset(&no_sigchld, SIGCHLD);
 
-    global_P = P;
-
-    jobn = add_job(jobs, P, FG);
+    jobn = add_job(P, FG);
     if(jobn < 0) exit(EXIT_FAILURE);
-    if(P->background) bg_job(jobs, bg_jobs, jobn);
+    if(P->background) bg_job(jobn);
 
     pipes = malloc((P->ntasks - 1) * sizeof(int[2]));
     if(!pipes){
@@ -130,7 +126,8 @@ void execute_tasks(Parse *P)
         // Special exception for exit and cd which must not be executed in child process
         if(!strcmp(P->tasks[t].cmd, "cd") 
            || !strcmp(P->tasks[t].cmd, "exit")
-           || !strcmp(P->tasks[t].cmd, "kill")
+           || !strcmp(P->tasks[t].cmd, "fg")
+           || !strcmp(P->tasks[t].cmd, "bg")
           )
         {
             builtin_execute(P->tasks[t]);
@@ -138,7 +135,7 @@ void execute_tasks(Parse *P)
         }
 
         sigprocmask(SIG_BLOCK, &no_sigchld, &old_mask);
-        P->tasks[t].pid = vfork();
+        P->tasks[t].pid = fork();
         setpgid(P->tasks[t].pid, P->tasks[0].pid);
         if(!P->background) set_fg_pgrp(P->tasks[0].pid);
 
@@ -167,7 +164,7 @@ void execute_tasks(Parse *P)
             }
             break;
         default:
-            add_pid_to_job(jobs, jobn, P->tasks[t].pid, t);
+            add_pid_to_job(jobn, P->tasks[t].pid, t);
             if(t == 0){
                 if(!P->background) set_fg_pgrp(P->tasks[t].pid);
             }else{
@@ -176,13 +173,12 @@ void execute_tasks(Parse *P)
             }
             break;
         } 
-        if(t == P->ntasks - 1 && P->background) print_bg_job(&jobs[jobn]);
+        if(t == P->ntasks - 1 && P->background) print_bg_job(jobn);
         sigprocmask(SIG_SETMASK, &old_mask, NULL);
     }
 
     free(pipes);
 }
-
 
 int main(int argc, char **argv)
 {
@@ -193,6 +189,20 @@ int main(int argc, char **argv)
     print_banner();
     signal(SIGTTOU, handler);
     signal(SIGCHLD, handler);
+    /*
+    jobs = mmap(0, sizeof(Job) * MAX_JOBS, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    if(jobs == MAP_FAILED)
+    {
+        perror("failed to mmap jobs array");
+        exit(EXIT_FAILURE);
+    }
+    bg_jobs = mmap(0, sizeof(Job *) * MAX_JOBS, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    if(bg_jobs == MAP_FAILED)
+    {
+        perror("failed to mmap bg_jobs array");
+        exit(EXIT_FAILURE);
+    }
+    */
 
     while (1) {
         /*
@@ -309,8 +319,8 @@ void handler(int sig)
             pause();
         break;
     case SIGCHLD:
-        while( (chld = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0 ) {
-            jobn = find_job(jobs, chld);
+        while( (chld = waitpid(-1, &status, WNOHANG | WUNTRACED | WCONTINUED)) > 0 ) {
+            jobn = find_job(chld);
             if(jobn < 0)
             {
                 fprintf(stderr, "DEBUG: SIGCHLD failed to find job (%d) for chld %d\n", jobn, chld);
@@ -319,39 +329,38 @@ void handler(int sig)
 
             if (WIFSTOPPED(status)) {
                 set_fg_pgrp(0);
-                if(jobs[jobn].status == FG) bg_job(jobs, bg_jobs, jobn);
-                suspend_job(bg_jobs, jobn);
+                printf("STOPPED jobn %d\n", jobn);
+                suspend_job(jobn);
             } else if (WIFCONTINUED(status)) {
+                continue_job(jobn);
+            } else if (WIFEXITED(status)) {
                 set_fg_pgrp(0);
-                if(jobs[jobn].pgid == chld) printf("[%d] + continued\t %s\n", jobn, jobs[jobn].name);
-            } else { // Process is done
-                // FG task exit
+                pid_term_job(chld, jobn);
+                //printf("SIGCHLD: W IF EXITED\n");
+            }else{
                 if(tcgetpgrp(STDOUT_FILENO) != getpgrp()){
                     printf("SIGCHLD: FG task exited\n");
-                    if(pid_term_job(jobs, bg_jobs, chld, jobn) == JOB_DONE) set_fg_pgrp(0);
-                }
-                // BG task exit
-                else
-                {
+                    if(pid_term_job(chld, jobn) == JOB_DONE) set_fg_pgrp(0);
+                }else{
                     WTERMSIG(status);
+                    printf("SIGCHLD: signal stat %d\n", status);
                     switch(status)
                     {
+                    case 0:
+                        break;
                     case SIGKILL:
-                        kill_job(jobs, jobn); 
+                        kill_job(jobn); 
                         break;
                     case SIGTERM:
-                        jobs[jobn].status = TERM;
+                        //jobs[jobn].status = TERM;
+                        break;
                     default:
-                        printf("SIGCHLD: some other child exit status\n");
+                        printf("SIGCHLD: some other signal status: %d\n", status);
                         break;
                     }
-                    pid_term_job(jobs, bg_jobs, chld, jobn);
+                    pid_term_job(chld, jobn);
                 }
-
-                //terminate_job(jobs, jobn);
-                //delete_job(jobs, jobn);
             }
-
         }
         break;
     default:

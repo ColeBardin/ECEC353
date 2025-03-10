@@ -3,13 +3,14 @@
 #include <string.h>
 #include "job.h"
 
-int add_job(Job *jobs, Parse *P, JobStatus status)
+Job jobs[MAX_JOBS] = {0};
+Job *bg_jobs[MAX_JOBS] = {0};
+
+int add_job(Parse *P, JobStatus status)
 {
     int job;
     Job *cur;
     int len;
-
-    if(!jobs) return BAD_JOB_LIST;
 
     for(job = 0; job < MAX_JOBS; job++)
     {
@@ -42,15 +43,10 @@ int add_job(Job *jobs, Parse *P, JobStatus status)
     return OUT_OF_JOBS;
 }
 
-int delete_job(Job * jobs, int jobn)
+int delete_job(int jobn)
 {
     Job *cur;
 
-    if(!jobs)
-    {
-        fprintf(stderr, "delete_job: bad job array\n");
-        return BAD_JOB_LIST;
-    }
     if(jobn < 0 || jobn >= MAX_JOBS)
     {
         fprintf(stderr, "delete_job: job index out of range\n");
@@ -65,6 +61,7 @@ int delete_job(Job * jobs, int jobn)
     }
 
     printf("DEBUG: deleted main job %d for %d(%s)\n", jobn, cur->pgid, cur->name);
+    //if(bg_jobs[cur->bg_id]->pgid == cur->pgid) bg_jobs[cur->bg_id] = NULL;
     free(cur->name);
     cur->name = NULL;
     free(cur->pids);
@@ -75,14 +72,10 @@ int delete_job(Job * jobs, int jobn)
     return 0;
 }
 
-int find_job(Job *jobs, pid_t pid)
+int find_job(pid_t pid)
 {
     int i, j;
-    if(!jobs)
-    {
-        fprintf(stderr, "find_job: bad job array\n");
-        return BAD_JOB_LIST;
-    }
+
     for(i = 0; i < MAX_JOBS; i++)
     {
         for(j = 0; j < jobs[i].npids; j++)
@@ -105,21 +98,29 @@ char *get_status(JobStatus status)
     return state_names[status];
 }
 
-int bg_job(Job *jobs, Job **bg_jobs, int jobn)
+JobStatus get_status_e(int jobn)
+{
+    Job *cur;
+
+    if(jobn < 0 || jobn >= MAX_JOBS)
+    {
+        fprintf(stderr, "get_stats_e: job index out of range\n");
+        return JOB_NOT_FOUND;
+    }
+    cur = &jobs[jobn];
+    if(cur->name == NULL)
+    {
+        fprintf(stderr, "get_status_e: job index is not a job\n");
+        return JOB_NOT_FOUND;
+    }
+    return cur->status;
+}
+
+int bg_job(int jobn)
 {
     Job *cur;
     int i;
 
-    if(!jobs)
-    {
-        fprintf(stderr, "bg_job: bad jobs array\n");
-        return BAD_JOB_LIST;
-    }
-    if(!bg_jobs)
-    {
-        fprintf(stderr, "bg_job: bad bg_jobs array\n");
-        return BAD_JOB_LIST;
-    }
     if(jobn < 0 || jobn >= MAX_JOBS)
     {
         fprintf(stderr, "bg_job: job index out of range\n");
@@ -144,41 +145,42 @@ int bg_job(Job *jobs, Job **bg_jobs, int jobn)
     return OUT_OF_JOBS;
 }
 
-int suspend_job(Job **bg_jobs, int jobn)
+int suspend_job(int jobn)
 {
     Job *cur;
+    int bgid;
 
-    if(!bg_jobs)
-    {
-        fprintf(stderr, "suspend_job: bad bg_jobs array\n");
-        return BAD_JOB_LIST;
-    }
     if(jobn < 0 || jobn >= MAX_JOBS)
     {
         fprintf(stderr, "suspend_job: job index out of range\n");
         return JOB_NOT_FOUND;
     }
-    cur = bg_jobs[jobn];
+    cur = &jobs[jobn];
     if(cur->name == NULL)
     {
         fprintf(stderr, "suspend_job: job index is not a job\n");
         return JOB_NOT_FOUND;
     }
+    bgid = cur->bg_id;
+    if(bgid < 0)
+    {
+        if(bg_job(jobn) < 0)
+        {
+            fprintf(stderr, "suspend_job: failed to bg job for suspension\n");
+            return JOB_ERROR;
+        }
+        bgid = cur->bg_id;
+    }
     cur->status = STOPPED;
-    printf("[%d] + suspended\t %s\n", jobn, cur->name);
+    printf("[%d] + suspended\t %s\n", bgid, cur->name);
 
     return 0;
 }
 
-int terminate_job(Job *jobs, int jobn)
+int terminate_job(int jobn)
 {
     Job *cur;
 
-    if(!jobs)
-    {
-        fprintf(stderr, "terminate_job: bad jobs array\n");
-        return BAD_JOB_LIST;
-    }
     if(jobn < 0 || jobn >= MAX_JOBS)
     {
         fprintf(stderr, "terminate_job: job index out of range\n");
@@ -196,36 +198,31 @@ int terminate_job(Job *jobs, int jobn)
     return 0;
 }
 
-int bg_job_remove(Job **bg_jobs, pid_t pgid)
+int bg_job_remove(int bgid)
 {
-    int i;
     Job *cur;
-    if(!bg_jobs)
+
+    if(bgid < 0 || bgid >= MAX_JOBS)
     {
-        fprintf(stderr, "bg_job_remove: bad bg_jobs array\n");
-        return BAD_JOB_LIST;
+        fprintf(stderr, "bg_job_remove: bgid is not valid\n");
+        return JOB_NOT_FOUND;
     }
-    for(i = 0; i < MAX_JOBS; i++)
+    cur = bg_jobs[bgid];
+    if(cur->name == NULL)
     {
-        cur = bg_jobs[i];
-        if(cur->pgid == pgid)
-        {
-            bg_jobs[i] = NULL;
-            printf("[%d] Done\t %s\n", i, cur->name);
-            return i;
-        }
+        fprintf(stderr, "bg_job_remove: bgid %d is not valid\n", bgid);
+        return JOB_NOT_FOUND;
     }
-    return JOB_NOT_FOUND;
+
+    printf("[%d] done\t %s\n", bgid, cur->name);
+    bg_jobs[bgid] = NULL;
+    return 0;
 }
 
-int add_pid_to_job(Job *jobs, int jobn, pid_t pid, int task)
+int add_pid_to_job(int jobn, pid_t pid, int task)
 {
     Job *cur;
-    if(!jobs)
-    {
-        fprintf(stderr, "add_pid_to_job: bad jobs array\n");
-        return BAD_JOB_LIST;
-    }
+
     if(jobn < 0 || jobn >= MAX_JOBS)
     {
         fprintf(stderr, "add_pid_to_job: job index out of range\n");
@@ -244,15 +241,10 @@ int add_pid_to_job(Job *jobs, int jobn, pid_t pid, int task)
     return 0;
 }
 
-int kill_job(Job *jobs, int jobn)
+int kill_job(int jobn)
 {
     Job *cur;
 
-    if(!jobs)
-    {
-        fprintf(stderr, "kill_job: bad jobs array\n");
-        return BAD_JOB_LIST;
-    }
     if(jobn < 0 || jobn >= MAX_JOBS)
     {
         fprintf(stderr, "kill_job: job index out of range\n");
@@ -265,21 +257,16 @@ int kill_job(Job *jobs, int jobn)
         return JOB_NOT_FOUND;
     }
     cur->status = TERM;
-    printf("[%d] + killed\t %s\n", jobn, cur->name);
+    printf("[%d] + killed\t %s\n", cur->bg_id, cur->name);
 
     return 0;
 }
 
-int pid_term_job(Job *jobs, Job ** bg_jobs, pid_t pid, int jobn)
+int pid_term_job(pid_t pid, int jobn)
 {
     int i;
     Job *cur;
 
-    if(!jobs)
-    {
-        fprintf(stderr, "pid_term_job: bad jobs array\n");
-        return BAD_JOB_LIST;
-    }
     if(jobn < 0 || jobn >= MAX_JOBS)
     {
         fprintf(stderr, "pid_term_job: job index out of range\n");
@@ -306,36 +293,106 @@ int pid_term_job(Job *jobs, Job ** bg_jobs, pid_t pid, int jobn)
     }
     // Check for still running pids
     for(i = 0; i < cur->npids; i++) if(cur->pids[i] != -1) return 0;
+    printf("DEBUG: no more PIDs running for main job %d (bg %d)\n", jobn, cur->bg_id);
     // No running PIDs
-    if(cur->status == BG) bg_job_remove(bg_jobs, cur->pgid);
-    delete_job(jobs, jobn);
+    if(cur->bg_id > -1) bg_job_remove(cur->bg_id);
+    delete_job(jobn);
     return JOB_DONE;
 }
 
-int print_bg_job(Job *job)
+int print_bg_job(int jobn)
 {
     int i;
-    if(!job)
+    Job *cur;
+
+    if(jobn < 0 || jobn >= MAX_JOBS)
     {
-        fprintf(stderr, "print_bg_job: received NULL job pointer\n");
+        fprintf(stderr, "print_bg_job: job index out of range\n");
         return JOB_NOT_FOUND;
     }
-    if(job->name == NULL)
+    cur = &jobs[jobn];
+    if(cur->name == NULL)
     {
-        fprintf(stderr, "print_bg_job: job pointer is not an active job\n");
+        fprintf(stderr, "print_bg_job: job index is not a job\n");
         return JOB_NOT_FOUND;
     }
 
-    printf("[%d]", job->bg_id);
-    for(i = 0; i < job->npids; i++) printf(" %d", job->pids[i]);
+    printf("[%d]", cur->bg_id);
+    for(i = 0; i < cur->npids; i++) printf(" %d", cur->pids[i]);
     printf("\n");
     return 0;
 }
 
+int continue_job(int jobn)
+{
+    Job *cur;
 
+    if(jobn < 0 || jobn >= MAX_JOBS)
+    {
+        fprintf(stderr, "continue_job: job index out of range\n");
+        return JOB_NOT_FOUND;
+    }
+    cur = &jobs[jobn];
+    if(cur->name == NULL)
+    {
+        fprintf(stderr, "continue_job: job index is not a job\n");
+        return JOB_NOT_FOUND;
+    }
 
+    cur->status = BG;
+    printf("[%d] + continued\t %s\n", cur->bg_id, cur->name);
 
+    return 0;
+}
 
+void print_all_bg_jobs()
+{
+    Job *cur;
+    int i;
 
+    /*
+    for(i = 0; i < MAX_JOBS; i++)
+    {
+        cur = bg_jobs[i];
+        if(cur->name != NULL) printf("[%d] + %s\t %s\n", i, get_status(cur->status), cur->name);
+    }
 
+    */
+    for(i = 0; i < MAX_JOBS; i++)
+    {
+        cur = &jobs[i];
+        if(cur->name != NULL)
+        {
+            if(cur->bg_id > -1)
+                printf("[%d] + %s\t %s\n", cur->bg_id, get_status(cur->status), cur->name);
+            else
+                printf("MAIN[%d] \t %s\n", i, cur->name);
+        }
+    }
+    return;
+}
+
+int get_job_pgid(int jobn)
+{
+    if(jobn < 0 || jobn >= MAX_JOBS || bg_jobs[jobn]->name == NULL) return JOB_NOT_FOUND;
+    else return bg_jobs[jobn]->pgid;
+}
+
+int get_bgid(int jobn)
+{
+    Job *cur;
+
+    if(jobn < 0 || jobn >= MAX_JOBS)
+    {
+        fprintf(stderr, "get_bgid: job index out of range\n");
+        return JOB_NOT_FOUND;
+    }
+    cur = &jobs[jobn];
+    if(cur->name == NULL)
+    {
+        fprintf(stderr, "get_bgid: job index is not a job\n");
+        return JOB_NOT_FOUND;
+    }
+    return cur->bg_id;
+}
 

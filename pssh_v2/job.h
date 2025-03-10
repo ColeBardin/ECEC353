@@ -6,10 +6,11 @@
 
 #define MAX_JOBS 100
 #define JOB_DONE 1
-#define BAD_JOB_LIST -1
-#define JOB_NOT_FOUND -2
-#define OUT_OF_JOBS -3
-#define PID_NOT_FOUND -4
+#define JOB_ERROR -1
+#define BAD_JOB_LIST -2
+#define JOB_NOT_FOUND -3
+#define OUT_OF_JOBS -4
+#define PID_NOT_FOUND -5
 
 typedef enum {
     STOPPED,
@@ -27,18 +28,23 @@ typedef struct {
     int bg_id;
 } Job;
 
-int add_job(Job *, Parse *, JobStatus);
-int delete_job(Job *, int);
-int find_job(Job *, pid_t);
-int find_bg_job(Job **, pid_t);
+int add_job(Parse *, JobStatus);
+int delete_job(int);
+int find_job(pid_t);
+int find_bg_job(pid_t);
 char *get_status(JobStatus);
-int bg_job(Job *, Job **, int);
-int suspend_job(Job **, int);
-int terminate_job(Job *, int);
-int bg_job_remove(Job **, pid_t);
-int add_pid_to_job(Job *, int, pid_t, int);
-int kill_job(Job *, int);
-int pid_term_job(Job *, Job **, pid_t, int);
-int print_bg_job(Job *);
+JobStatus get_status_e(int);
+int bg_job(int);
+int suspend_job(int);
+int terminate_job(int);
+int bg_job_remove(int);
+int add_pid_to_job(int, pid_t, int);
+int kill_job(int);
+int pid_term_job(pid_t, int);
+int print_bg_job(int);
+int continue_job(int);
+void print_all_bg_jobs();
+int get_job_pgid(int);
+int get_bgid(int);
 
 #endif

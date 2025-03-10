@@ -8,9 +8,6 @@
 #include "parse.h"
 #include "job.h"
 
-extern Job jobs[MAX_JOBS];
-extern Job *bg_jobs[MAX_JOBS];
-
 static char *builtin[] = {
     "exit",   /* exits the shell */
     "which",  /* displays full path to command */
@@ -93,99 +90,112 @@ void builtin_execute(Task T)
 
         if(chdir(p) < 0) perror("Failed to cd");
     } else if(!strcmp(T.cmd, "jobs")){
-        Job *cur;
-        for(i = 0; i < MAX_JOBS; i++)
-        {
-            cur = bg_jobs[i];
-            if(cur->name != NULL) printf("[%d] + %s\t %s\n", i, get_status(cur->status), cur->name);
-        }
+        print_all_bg_jobs();
+        return;
     } else if(!strcmp(T.cmd, "fg")){
+        /*
         int jobn;
-        if(T.argv[1] == NULL || T.argv[1][0] != '%')
+        if(T.argv[1] == NULL)
         {
-            fprintf(stderr, "fg: invalid argument use\n");
-            fprintf(stderr, "USAGE: fg %%<job_number>\n");
+            printf("Usage: fg %%<jobnumber>\n");
             return;
         }
         jobn = atoi(&T.argv[1][1]);
-        if(jobn < 0 || bg_jobs[jobn]->name == NULL){
-            fprintf(stderr, "fg: invalid job number: %d\n", jobn);
+        if(T.argv[1][0] != '%' || jobn < 0 || bg_jobs[jobn]->name == NULL)
+        {
+            printf("pssh: invalid job number: %s\n", T.argv[1]);
             return;
         }
-        set_fg_pgrp(bg_jobs[jobn]->pgid);
-    } else if(!strcmp(T.cmd, "bg")){
 
+        kill(-1 * bg_jobs[jobn]->pgid, SIGCONT);
+        set_fg_pgrp(bg_jobs[jobn]->pgid);
+        */
+    } else if(!strcmp(T.cmd, "bg")){
+        /*
+        int jobn;
+        if(T.argv[1] == NULL)
+        {
+            printf("Usage: bg %%<jobnumber>\n");
+            return;
+        }
+        jobn = atoi(&T.argv[1][1]);
+        if(T.argv[1][0] != '%' || jobn < 0 || bg_jobs[jobn]->name == NULL)
+        {
+            printf("pssh: invalid job number: %s\n", T.argv[1]);
+            return;
+        }
+        kill(-1 * bg_jobs[jobn]->pgid, SIGCONT);
+        set_fg_pgrp(0);
+        */
+        return;
     } else if(!strcmp(T.cmd, "kill")){
         int jobn;
         pid_t pid;
         int signum;
+        int i;
 
+        i = 1;
         jobn = -1;
         signum = SIGTERM;
 
+        // No args
         if(T.argv[1] == NULL)
         {
-            // no arguments
-            fprintf(stderr, "kill: not enough arguments\n");
-            fprintf(stderr, "USAGE: kill (<pid> | %%<jobn>) [-s <sig>]\n");
+            printf("Usage: kill [-s <signal>] <pid> | %%<job> ...\n");
             return;
         }
-        // 2 arguments
-        if(T.argv[2] != NULL && T.argv[3] == NULL)
+        // first arg is -s
+        if(T.argv[1][0] == '-' && T.argv[1][1] == 's')
         {
-            fprintf(stderr, "kill: invalid number of arguments\n");
-            fprintf(stderr, "USAGE: kill (<pid> | %%<jobn>) [-s <sig>]\n");
-            return;
-        }
-        // parse second arg as pid or jobnum
-        if(T.argv[1][0] == '%')
-        {
-            jobn = atoi(&T.argv[1][1]);
-            if(jobn < 0)
+            // missing <signal>
+            if(T.argv[2] == NULL)
             {
-                fprintf(stderr, "kill: failed to parse job number: %s\n", T.argv[1]);
+                printf("Usage: kill [-s <signal>] <pid> | %%<job> ...\n");
                 return;
             }
-            if(bg_jobs[jobn]->name == NULL)
+            signum = atoi(T.argv[2]);
+            if(signum < 1 || signum > 31)
             {
-                fprintf(stderr, "kill: job number %d is not a valid job\n", jobn);
+                printf("pssh: invalid signal number: %s\n", T.argv[2]);
                 return;
             }
-        }
-        else
-        {
-            pid = atoi(T.argv[1]);
-            if(pid < 0)
+            // if missing PIDs/jobns after -s <signal>
+            if(T.argv[3] == NULL)
             {
-                fprintf(stderr, "kill: failed to parse pid: %s\n", T.argv[1]);
+                printf("Usage: kill [-s <signal>] <pid> | %%<job> ...\n");
                 return;
             }
+            i = 3;
         }
-        // 3 arguments
-        if(T.argv[2] != NULL && T.argv[3] != NULL && T.argv[4] == NULL)
+
+        while(1)
         {
-            if(T.argv[2][0] == '-' && T.argv[2][1] == 's')
+            if(T.argv[i] == NULL) return;
+            if(T.argv[i][0] == '%')
             {
-                signum = atoi(T.argv[3]);
-                if(signum < 1 || signum > 31)
+                jobn = atoi(&T.argv[i][1]);
+                int pgid;
+                pgid = get_job_pgid(jobn);
+                if(pgid < 0)
                 {
-                    fprintf(stderr, "kill: invalid signum: %s\n", T.argv[3]);
+                    printf("pssh: invalid job number: %s\n", T.argv[i]);
                     return;
                 }
+                printf("DEBUG: sending signal %d to job#%d\n", signum, jobn);
+                kill(-1 * pgid, signum);
             }
             else
             {
-                fprintf(stderr, "kill: unable to parse -s flag from second arg: %s\n", T.argv[2]);
-                fprintf(stderr, "USAGE: kill (<pid> | %%<jobn>) [-s <sig>]\n");
-                return;
+                pid = atoi(T.argv[i]);
+                if(pid < 0)
+                {
+                    printf("pssh: invalid pid: %s\n", T.argv[i]);
+                    return;
+                }
+                kill(pid, signum);
             }
+            i++;
         }
-        if(jobn != -1)
-        {
-            printf("DEBUG: sending signal %d to job#%d\n", signum, jobn);
-            for(i = 0; i < bg_jobs[jobn]->npids; i++) kill(bg_jobs[jobn]->pids[i], signum);
-        }
-        else kill(pid, signum);
         return;
     } else {
         printf("pssh: builtin command: %s (not implemented!)\n", T.cmd);
