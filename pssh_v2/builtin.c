@@ -93,7 +93,6 @@ void builtin_execute(Task T)
         print_all_bg_jobs();
         return;
     } else if(!strcmp(T.cmd, "fg")){
-        int jobn;
         int bgid;
         int pgid;
 
@@ -102,18 +101,16 @@ void builtin_execute(Task T)
             printf("Usage: fg %%<jobnumber>\n");
             return;
         }
-        jobn = atoi(&T.argv[1][1]);
-        if(T.argv[1][0] != '%' || jobn < 0 || (bgid = get_bgid(jobn)) < 0)
+        bgid = atoi(&T.argv[1][1]);
+        if(T.argv[1][0] != '%' || bgid < 0 || (pgid = get_job_pgid(bgid)) < 0)
         {
             printf("pssh: invalid job number: %s\n", T.argv[1]);
             return;
         }
 
-        pgid = get_job_pgid(bgid);
         kill(-1 * pgid, SIGCONT);
         set_fg_pgrp(pgid);
     } else if(!strcmp(T.cmd, "bg")){
-        int jobn;
         int bgid;
         int pgid;
 
@@ -122,14 +119,14 @@ void builtin_execute(Task T)
             printf("Usage: bg %%<jobnumber>\n");
             return;
         }
-        jobn = atoi(&T.argv[1][1]);
-        if(T.argv[1][0] != '%' || jobn < 0 || (bgid = get_bgid(jobn)) < 0)
+        bgid = atoi(&T.argv[1][1]);
+        if(T.argv[1][0] != '%' || bgid < 0 || (pgid = get_job_pgid(bgid)) < 0)
         {
             printf("pssh: invalid job number: %s\n", T.argv[1]);
             return;
         }
 
-        pgid = get_job_pgid(bgid);
+        //printf("DEBUG: BG sending SIGCONT to pgid %d\n", pgid);
         kill(-1 * pgid, SIGCONT);
         return;
     } else if(!strcmp(T.cmd, "kill")){

@@ -319,7 +319,7 @@ void handler(int sig)
                 continue_job(jobn);
             }else if (WIFSTOPPED(status)) {
                 set_fg_pgrp(0);
-                printf("STOPPED jobn %d\n", jobn);
+                //printf("STOPPED jobn %d\n", jobn);
                 suspend_job(jobn);
             } else if (WIFEXITED(status)) {
                 set_fg_pgrp(0);
