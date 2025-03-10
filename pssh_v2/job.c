@@ -3,8 +3,8 @@
 #include <string.h>
 #include "job.h"
 
-Job jobs[MAX_JOBS] = {0};
-Job *bg_jobs[MAX_JOBS] = {0};
+Job jobs[MAX_JOBS];
+Job *bg_jobs[MAX_JOBS];
 
 int add_job(Parse *P, JobStatus status)
 {
