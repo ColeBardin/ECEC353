@@ -107,6 +107,10 @@ void execute_tasks(Parse *P)
     sigemptyset(&no_sigchld);
     sigaddset(&no_sigchld, SIGCHLD);
 
+    jobn = add_job(P, FG);
+    if(jobn < 0) exit(EXIT_FAILURE);
+    if(P->background) bg_job(jobn);
+
     pipes = malloc((P->ntasks - 1) * sizeof(int[2]));
     if(!pipes){
         perror("Failed to allocate memory for array of pipes");
@@ -126,12 +130,10 @@ void execute_tasks(Parse *P)
           )
         {
             builtin_execute(P->tasks[t]);
+            delete_job(jobn);
             continue;
         }
 
-        jobn = add_job(P, FG);
-        if(jobn < 0) exit(EXIT_FAILURE);
-        if(P->background) bg_job(jobn);
 
         sigprocmask(SIG_BLOCK, &no_sigchld, &old_mask);
         P->tasks[t].pid = fork();
@@ -188,20 +190,6 @@ int main(int argc, char **argv)
     print_banner();
     signal(SIGTTOU, handler);
     signal(SIGCHLD, handler);
-    /*
-    jobs = mmap(0, sizeof(Job) * MAX_JOBS, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-    if(jobs == MAP_FAILED)
-    {
-        perror("failed to mmap jobs array");
-        exit(EXIT_FAILURE);
-    }
-    bg_jobs = mmap(0, sizeof(Job *) * MAX_JOBS, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-    if(bg_jobs == MAP_FAILED)
-    {
-        perror("failed to mmap bg_jobs array");
-        exit(EXIT_FAILURE);
-    }
-    */
 
     while (1) {
         /*
@@ -326,12 +314,13 @@ void handler(int sig)
                 exit(EXIT_FAILURE);
             }
 
-            if (WIFSTOPPED(status)) {
-                set_fg_pgrp(0);
-                //printf("STOPPED jobn %d\n", jobn);
-                suspend_job(jobn);
-            } else if (WIFCONTINUED(status)) {
+            if (WIFCONTINUED(status)) {
+                //printf("CONTINUED jobn %d\n", jobn);
                 continue_job(jobn);
+            }else if (WIFSTOPPED(status)) {
+                set_fg_pgrp(0);
+                printf("STOPPED jobn %d\n", jobn);
+                suspend_job(jobn);
             } else if (WIFEXITED(status)) {
                 set_fg_pgrp(0);
                 pid_term_job(chld, jobn);

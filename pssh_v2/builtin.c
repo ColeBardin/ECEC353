@@ -119,7 +119,7 @@ void builtin_execute(Task T)
 
         if(T.argv[1] == NULL)
         {
-            printf("Usage: fg %%<jobnumber>\n");
+            printf("Usage: bg %%<jobnumber>\n");
             return;
         }
         jobn = atoi(&T.argv[1][1]);
