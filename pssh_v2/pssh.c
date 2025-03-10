@@ -107,10 +107,6 @@ void execute_tasks(Parse *P)
     sigemptyset(&no_sigchld);
     sigaddset(&no_sigchld, SIGCHLD);
 
-    jobn = add_job(P, FG);
-    if(jobn < 0) exit(EXIT_FAILURE);
-    if(P->background) bg_job(jobn);
-
     pipes = malloc((P->ntasks - 1) * sizeof(int[2]));
     if(!pipes){
         perror("Failed to allocate memory for array of pipes");
@@ -127,12 +123,15 @@ void execute_tasks(Parse *P)
         if(!strcmp(P->tasks[t].cmd, "cd") 
            || !strcmp(P->tasks[t].cmd, "exit")
            || !strcmp(P->tasks[t].cmd, "fg")
-           || !strcmp(P->tasks[t].cmd, "bg")
           )
         {
             builtin_execute(P->tasks[t]);
             continue;
         }
+
+        jobn = add_job(P, FG);
+        if(jobn < 0) exit(EXIT_FAILURE);
+        if(P->background) bg_job(jobn);
 
         sigprocmask(SIG_BLOCK, &no_sigchld, &old_mask);
         P->tasks[t].pid = fork();
