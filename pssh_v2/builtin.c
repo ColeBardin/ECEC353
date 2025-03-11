@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/wait.h>
 
 #include "builtin.h"
 #include "parse.h"
@@ -88,7 +89,7 @@ void builtin_execute(Task T)
         if(T.argv[1] == NULL) p = getenv("HOME");
         else p = T.argv[1];
 
-        if(chdir(p) < 0) perror("Failed to cd");
+        if(chdir(p) < 0) perror("pssh: failed to cd");
     } else if(!strcmp(T.cmd, "jobs")){
         print_all_bg_jobs();
         return;
@@ -108,8 +109,9 @@ void builtin_execute(Task T)
             return;
         }
 
-        kill(-1 * pgid, SIGCONT);
         set_fg_pgrp(pgid);
+        kill(-1 * pgid, SIGCONT);
+        return;
     } else if(!strcmp(T.cmd, "bg")){
         int bgid;
         int pgid;
@@ -127,6 +129,7 @@ void builtin_execute(Task T)
         }
 
         //printf("DEBUG: BG sending SIGCONT to pgid %d\n", pgid);
+        //set_fg_pgrp(0);
         kill(-1 * pgid, SIGCONT);
         return;
     } else if(!strcmp(T.cmd, "kill")){

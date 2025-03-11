@@ -214,7 +214,7 @@ int bg_job_remove(int bgid)
         return JOB_NOT_FOUND;
     }
 
-    printf("[%d] done\t %s\n", bgid, cur->name);
+    if(cur->status != TERM) printf("[%d] done\t %s\n", bgid, cur->name);
     bg_jobs[bgid] = NULL;
     return 0;
 }
@@ -293,7 +293,7 @@ int pid_term_job(pid_t pid, int jobn)
     }
     // Check for still running pids
     for(i = 0; i < cur->npids; i++) if(cur->pids[i] != -1) return 0;
-    //printf("DEBUG: no more PIDs running for main job %d (bg %d)\n", jobn, cur->bg_id);
+    printf("DEBUG: no more PIDs running for main job %d (bg %d)\n", jobn, cur->bg_id);
     // No running PIDs
     if(cur->bg_id > -1) bg_job_remove(cur->bg_id);
     delete_job(jobn);
@@ -364,9 +364,17 @@ void print_all_bg_jobs()
         if(cur->name != NULL)
         {
             if(cur->bg_id > -1)
-                printf("[%d] + %s\t %s\n", cur->bg_id, get_status(cur->status), cur->name);
+            {
+                printf("[%d] + %s\t %s", cur->bg_id, get_status(cur->status), cur->name);
+                for(int j = 0; j < cur->npids; j++) printf(" %d", cur->pids[j]);
+                printf("\n");
+            }
             else
-                printf("MAIN[%d] \t %s\n", i, cur->name);
+            {
+                printf("MAIN[%d] \t %s", i, cur->name);
+                for(int j = 0; j < cur->npids; j++) printf(" %d", cur->pids[j]);
+                printf("\n");
+            }
         }
     }
     return;
@@ -395,4 +403,24 @@ int get_bgid(int jobn)
     }
     return cur->bg_id;
 }
+
+pid_t *get_pids(int jobn, int *npids)
+{
+    Job *cur;
+
+    if(jobn < 0 || jobn >= MAX_JOBS)
+    {
+        fprintf(stderr, "get_pids: job index out of range\n");
+        return NULL;
+    }
+    cur = &jobs[jobn];
+    if(cur->name == NULL)
+    {
+        fprintf(stderr, "get_pids: job index is not a job\n");
+        return NULL;
+    }
+    if(npids) *npids = cur->npids;
+    return cur->pids;
+}
+
 

@@ -127,6 +127,7 @@ void execute_tasks(Parse *P)
         if(!strcmp(P->tasks[t].cmd, "cd") 
            || !strcmp(P->tasks[t].cmd, "exit")
            || !strcmp(P->tasks[t].cmd, "fg")
+           //|| !strcmp(P->tasks[t].cmd, "bg")
           )
         {
             builtin_execute(P->tasks[t]);
@@ -324,7 +325,9 @@ void handler(int sig)
             } else if (WIFEXITED(status)) {
                 set_fg_pgrp(0);
                 pid_term_job(chld, jobn);
-                //printf("SIGCHLD: W IF EXITED\n");
+                //WEXITSTATUS(status);
+                //printf("DEBUG: child exited w status: %d\n", status);
+                //printf("SIGCHLD: W IF EXITED (%d)\n", chld);
             }else{
                 if(tcgetpgrp(STDOUT_FILENO) != getpgrp()){
                     //printf("SIGCHLD: FG task exited\n");
@@ -340,7 +343,7 @@ void handler(int sig)
                         kill_job(jobn); 
                         break;
                     case SIGTERM:
-                        //jobs[jobn].status = TERM;
+                        terminate_job(jobn);
                         break;
                     default:
                         printf("pssh: SIGCLD exited with some other signal status: %d\n", status);
