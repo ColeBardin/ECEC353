@@ -127,7 +127,8 @@ void execute_tasks(Parse *P)
         if(!strcmp(P->tasks[t].cmd, "cd") 
            || !strcmp(P->tasks[t].cmd, "exit")
            || !strcmp(P->tasks[t].cmd, "fg")
-           //|| !strcmp(P->tasks[t].cmd, "bg")
+           || !strcmp(P->tasks[t].cmd, "bg")
+           || !strcmp(P->tasks[t].cmd, "jobs")
           )
         {
             builtin_execute(P->tasks[t]);
