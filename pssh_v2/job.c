@@ -171,8 +171,11 @@ int suspend_job(int jobn)
         }
         bgid = cur->bg_id;
     }
-    cur->status = STOPPED;
-    printf("[%d] + suspended\t %s\n", bgid, cur->name);
+    if(cur->status != STOPPED)
+    {
+        cur->status = STOPPED;
+        printf("[%d] + suspended\t %s\n", bgid, cur->name);
+    }
 
     return 0;
 }
@@ -339,8 +342,11 @@ int continue_job(int jobn)
         return JOB_NOT_FOUND;
     }
 
-    cur->status = BG;
-    printf("[%d] + continued\t %s\n", cur->bg_id, cur->name);
+    if(cur->status != BG)
+    {
+        cur->status = BG;
+        printf("[%d] + continued\t %s\n", cur->bg_id, cur->name);
+    }
 
     return 0;
 }
