@@ -296,7 +296,7 @@ int pid_term_job(pid_t pid, int jobn)
     }
     // Check for still running pids
     for(i = 0; i < cur->npids; i++) if(cur->pids[i] != -1) return 0;
-    printf("DEBUG: no more PIDs running for main job %d (bg %d)\n", jobn, cur->bg_id);
+    //printf("DEBUG: no more PIDs running for main job %d (bg %d)\n", jobn, cur->bg_id);
     // No running PIDs
     if(cur->bg_id > -1) bg_job_remove(cur->bg_id);
     delete_job(jobn);
@@ -356,33 +356,12 @@ void print_all_bg_jobs()
     Job *cur;
     int i;
 
-    /*
     for(i = 0; i < MAX_JOBS; i++)
     {
         cur = bg_jobs[i];
         if(cur->name != NULL) printf("[%d] + %s\t %s\n", i, get_status(cur->status), cur->name);
     }
 
-    */
-    for(i = 0; i < MAX_JOBS; i++)
-    {
-        cur = &jobs[i];
-        if(cur->name != NULL)
-        {
-            if(cur->bg_id > -1)
-            {
-                printf("[%d] + %s\t %s", cur->bg_id, get_status(cur->status), cur->name);
-                for(int j = 0; j < cur->npids; j++) printf(" %d", cur->pids[j]);
-                printf("\n");
-            }
-            else
-            {
-                printf("MAIN[%d] \t %s", i, cur->name);
-                for(int j = 0; j < cur->npids; j++) printf(" %d", cur->pids[j]);
-                printf("\n");
-            }
-        }
-    }
     return;
 }
 
