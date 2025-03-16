@@ -136,7 +136,6 @@ void execute_tasks(Parse *P)
             continue;
         }
 
-
         sigprocmask(SIG_BLOCK, &no_sigchld, &old_mask);
         P->tasks[t].pid = fork();
         setpgid(P->tasks[t].pid, P->tasks[0].pid);

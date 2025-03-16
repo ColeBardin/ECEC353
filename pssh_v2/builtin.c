@@ -108,8 +108,8 @@ void builtin_execute(Task T)
             printf("pssh: invalid job number: %s\n", T.argv[1]);
             return;
         }
-        set_job_stat(bgid, FG);
 
+        set_job_stat(bgid, FG);
         set_fg_pgrp(pgid);
         kill(-1 * pgid, SIGCONT);
         return;
