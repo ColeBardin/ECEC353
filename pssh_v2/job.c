@@ -342,9 +342,8 @@ int continue_job(int jobn)
         return JOB_NOT_FOUND;
     }
 
-    if(cur->status != BG)
+    if(cur->status != FG)
     {
-        cur->status = BG;
         printf("[%d] + continued\t %s\n", cur->bg_id, cur->name);
     }
 
