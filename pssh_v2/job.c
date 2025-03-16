@@ -217,7 +217,7 @@ int bg_job_remove(int bgid)
         return JOB_NOT_FOUND;
     }
 
-    if(cur->status != TERM) printf("[%d] done\t %s\n", bgid, cur->name);
+    if(cur->status != TERM && cur->status != FG) printf("[%d] done\t %s\n", bgid, cur->name);
     bg_jobs[bgid] = NULL;
     return 0;
 }
@@ -409,3 +409,20 @@ pid_t *get_pids(int jobn, int *npids)
 }
 
 
+int set_job_stat(int bgjobn, JobStatus stat)
+{
+    Job *cur;
+    if(bgjobn < 0 || bgjobn >= MAX_JOBS)
+    {
+        fprintf(stderr, "set_job_stat: job index out of range\n");
+        return JOB_NOT_FOUND;
+    }
+    cur = bg_jobs[bgjobn];
+    if(cur == NULL || cur->name == NULL)
+    {
+        fprintf(stderr, "set_job_stat: job index is not a job\n");
+        return JOB_NOT_FOUND;
+    }
+    cur->status = stat;
+    return 0;
+}

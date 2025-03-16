@@ -47,5 +47,6 @@ void print_all_bg_jobs();
 int get_job_pgid(int);
 int get_bgid(int);
 pid_t *get_pids(int, int *);
+int set_job_stat(int, JobStatus);
 
 #endif

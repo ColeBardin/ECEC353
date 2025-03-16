@@ -108,6 +108,7 @@ void builtin_execute(Task T)
             printf("pssh: invalid job number: %s\n", T.argv[1]);
             return;
         }
+        set_job_stat(bgid, FG);
 
         set_fg_pgrp(pgid);
         kill(-1 * pgid, SIGCONT);
@@ -128,8 +129,7 @@ void builtin_execute(Task T)
             return;
         }
 
-        //printf("DEBUG: BG sending SIGCONT to pgid %d\n", pgid);
-        //set_fg_pgrp(0);
+        set_job_stat(bgid, BG);
         kill(-1 * pgid, SIGCONT);
         return;
     } else if(!strcmp(T.cmd, "kill")){
@@ -185,7 +185,6 @@ void builtin_execute(Task T)
                     printf("pssh: invalid job number: %s\n", T.argv[i]);
                     return;
                 }
-                //printf("DEBUG: sending signal %d to job#%d\n", signum, jobn);
                 kill(-1 * pgid, signum);
             }
             else

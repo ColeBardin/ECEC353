@@ -123,12 +123,12 @@ void execute_tasks(Parse *P)
                 exit(EXIT_FAILURE);
             }
         }
-        // Special exception for exit and cd which must not be executed in child process
+        // builtins that don't fork
         if(!strcmp(P->tasks[t].cmd, "cd") 
            || !strcmp(P->tasks[t].cmd, "exit")
            || !strcmp(P->tasks[t].cmd, "fg")
            || !strcmp(P->tasks[t].cmd, "bg")
-           || !strcmp(P->tasks[t].cmd, "jobs")
+           //|| !strcmp(P->tasks[t].cmd, "jobs")
           )
         {
             builtin_execute(P->tasks[t]);
@@ -194,10 +194,6 @@ int main(int argc, char **argv)
     signal(SIGCHLD, handler);
 
     while (1) {
-        /*
-        while(tcgetpgrp(STDOUT_FILENO) != getpgrp())
-            pause();
-            */
         ps1 = build_prompt();
         /* do NOT replace readline() with scanf() or anything else! */
         cmdline = readline(ps1);
@@ -317,25 +313,20 @@ void handler(int sig)
             }
 
             if (WIFCONTINUED(status)) {
-                //printf("CONTINUED jobn %d\n", jobn);
                 continue_job(jobn);
             }else if (WIFSTOPPED(status)) {
                 set_fg_pgrp(0);
-                //printf("STOPPED jobn %d\n", jobn);
                 suspend_job(jobn);
             } else if (WIFEXITED(status)) {
                 set_fg_pgrp(0);
                 pid_term_job(chld, jobn);
-                //WEXITSTATUS(status);
                 //printf("DEBUG: child exited w status: %d\n", status);
-                //printf("SIGCHLD: W IF EXITED (%d)\n", chld);
             }else{
                 if(tcgetpgrp(STDOUT_FILENO) != getpgrp()){
-                    //printf("SIGCHLD: FG task exited\n");
                     if(pid_term_job(chld, jobn) == JOB_DONE) set_fg_pgrp(0);
                 }else{
                     WTERMSIG(status);
-                    //printf("SIGCHLD: signal stat %d\n", status);
+                    //printf("DEBUG: SIGCHLD stat %d\n", status);
                     switch(status)
                     {
                     case 0:
