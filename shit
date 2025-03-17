@@ -1,0 +1,91 @@
+SIGBUS vs SIGSEGV
+Bus - Memory access error
+mapping 100B file, min mapping is page of 4K. writing beyond the 100B is bussing error
+writting to memory without filebacking. different from writing to RO memory
+
+
+Signals get sent != delivered
+signals are delivered when processes are delivered
+
+disposition for signal. 3 for each signal (except for sigstop and sigkill)
+1. default action (terminate, terminate core dump, ignore, stop, start)
+2. ignored
+3. custom handler
+
+signal mask used to filter out unwanted signals from delivered (except for sigkill or sigquit)
+different than ignoring
+signals dont queue when mask (diff from pending)
+queueing is sending 100 signals at "once"
+
+ex:
+mask sigint
+send 100 sigints
+unmask sigint
+only receive 1 siging
+
+
+if sigint is received while inside of sigint handler
+temporarily masked on modern systems. used to recursively enter SIGNINT handler
+leaves pending SIGINT
+
+
+what if different, unmasked, signal is received while handling another signal:
+depends on what signal handler does
+no sys calls:
+    no kernel control and allow for signal hanlder to intervene
+    unwind stack, return to main, then kernel can call new signal handler
+
+yes sys calls:
+    kernel gets controll, it can force process to handle new signal
+    depends on kernel and what youre doign
+
+
+kernel can throw process into signal handler if it wants
+
+
+Process Groups
+1 PG in FG per terminal
+Terminal control signals only sent to FG stuff
+Only FG can read and write to terminal
+
+Baud = 1 character per second. ASCII is 1 Byte per char but UTF8 is not
+
+
+session is pretty much synonymous with terminal in modern OSs
+
+First process in session is session leader: PID = SID
+
+Type shit into prompt and hit enter: that is a PG.
+commands piped together get 1 PG, but share SG with the shell
+
+Terminal has control setting for:
+FG PGID -> updates when running new commands / BGing them and stuff
+Controlling SID
+
+setpgid()
+tsetpgrp()
+
+backgrounding shit: after BGing
+[job #] PID
+
+$ jobs # to list jobs
+$ fg %1 # to fg job 1
+
+Old pssh: 
+ctr-c sends SIGINT to all PIDs in the PG. 
+normal fork/exec sequence keeps new command in pssh PG, so both get SIGINT, instead of new cmd
+
+SIGTTIN: trying to read from STDIN while backgrounded
+sent to BGed process
+
+
+
+
+
+
+
+
+
+
+
+
